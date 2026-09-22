@@ -2394,6 +2394,12 @@ uint32_t llama_context::graph_max_nodes(uint32_t n_tokens) const {
         }
     }
 
+    if (graph_needs_backward) {
+        // ggml_build_backward_expand() appends the backward pass to the same graph, which
+        // takes roughly three times the forward node count
+        res *= 4;
+    }
+
     uint32_t n_sampling_nodes = 0;
     uint32_t n_sampling_nodes_max = 0;
     for (const auto & [seq_id, sampler] : sampling.samplers) {
@@ -3490,11 +3496,14 @@ void llama_context::opt_init(struct llama_model * model, struct llama_opt_params
     if (cparams.flash_attn) {
         LLAMA_LOG_INFO("%s: disabling flash attention, FLASH_ATTN_EXT has no backward pass\n", __func__);
         cparams.flash_attn = false;
-
-        // the graph changes without flash attention, need to reserve again
-        sched_need_reserve = true;
-        sched_reserve();
     }
+
+    // the graph from here on differs from the one reserved at construction: no flash attention,
+    // and it carries the backward pass, which needs a wider node budget. Reserve once, before
+    // the optimizer takes its reference to sched.
+    graph_needs_backward = true;
+    sched_need_reserve   = true;
+    sched_reserve();
 
     ggml_opt_params opt_params = ggml_opt_default_params(sched.get(), GGML_OPT_LOSS_TYPE_CROSS_ENTROPY);
     opt_params.opt_period      = n_batch / n_ubatch;

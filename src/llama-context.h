@@ -349,6 +349,10 @@ private:
 
     bool sched_need_reserve = true;
 
+    // set by opt_init(): the training graph carries the backward pass as well, so the node
+    // budget has to be widened before the scheduler is reserved
+    bool graph_needs_backward = false;
+
     ggml_backend_t backend_cpu = nullptr;
     std::vector<ggml_backend_ptr> backends;
 
